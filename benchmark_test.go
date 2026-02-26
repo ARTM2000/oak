@@ -3,7 +3,7 @@ package oak
 import "testing"
 
 func BenchmarkRegister(b *testing.B) {
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		c := New()
 		c.Register(newTestLogger)
 		c.Register(newTestConfig)
@@ -12,7 +12,7 @@ func BenchmarkRegister(b *testing.B) {
 }
 
 func BenchmarkBuild(b *testing.B) {
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		c := New()
 		c.Register(newTestLogger)
 		c.Register(newTestConfig)
@@ -31,7 +31,7 @@ func BenchmarkResolve_Singleton(b *testing.B) {
 	c.Build()
 
 	b.ResetTimer()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		Resolve[*testDatabase](c)
 	}
 }
@@ -45,7 +45,7 @@ func BenchmarkResolve_Transient(b *testing.B) {
 	c.Build()
 
 	b.ResetTimer()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		Resolve[*testOrderService](c)
 	}
 }
@@ -57,7 +57,7 @@ func BenchmarkResolveNamed(b *testing.B) {
 	c.Build()
 
 	b.ResetTimer()
-	for b.Loop() {
+	for i := 0; i < b.N; i++ {
 		ResolveNamed[*testOrderService](c, "order")
 	}
 }

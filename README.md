@@ -24,7 +24,7 @@ build once, resolve anywhere — with full type safety via generics.
 go get github.com/ARTM2000/oak
 ```
 
-Requires **Go 1.25** or later.
+Requires **Go 1.21** or later.
 
 ## Quick Start
 
