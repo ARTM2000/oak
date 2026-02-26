@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- `Container.Shutdown(ctx)` for graceful shutdown of `io.Closer` singletons
+  in reverse dependency order, with context-based timeout support.
+- `ErrAlreadyShutdown` sentinel error for repeated shutdown calls.
+
 ## [0.1.0] - 2026-02-27
 
 ### Added

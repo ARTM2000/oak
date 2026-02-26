@@ -21,4 +21,8 @@ var (
 	// ErrDuplicateProvider is returned when a provider for the same type or
 	// name is registered more than once.
 	ErrDuplicateProvider = errors.New("duplicate provider")
+
+	// ErrAlreadyShutdown is returned when [Container.Shutdown] is called
+	// more than once.
+	ErrAlreadyShutdown = errors.New("container already shut down")
 )

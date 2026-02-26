@@ -1,6 +1,7 @@
 package oak
 
 import (
+	"context"
 	"errors"
 	"strings"
 	"testing"
@@ -270,6 +271,154 @@ func TestBuild(t *testing.T) {
 
 		if callCount != 1 {
 			t.Fatalf("singleton should be constructed once during build, called %d times", callCount)
+		}
+	})
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown
+// ---------------------------------------------------------------------------
+
+func TestShutdown(t *testing.T) {
+	t.Run("closes io.Closer singletons", func(t *testing.T) {
+		c := New()
+		var order []string
+		mustRegister(t, c, func() *testClosable {
+			return &testClosable{Name: "resource", Order: &order}
+		})
+		mustBuild(t, c)
+
+		res, _ := Resolve[*testClosable](c)
+		if res.Closed {
+			t.Fatal("should not be closed before shutdown")
+		}
+
+		err := c.Shutdown(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !res.Closed {
+			t.Fatal("should be closed after shutdown")
+		}
+	})
+
+	t.Run("reverse dependency order", func(t *testing.T) {
+		c := New()
+		var order []string
+
+		mustRegister(t, c, func() *testConfig {
+			return &testConfig{DSN: "test"}
+		})
+		mustRegister(t, c, func() *testClosable {
+			return &testClosable{Name: "database", Order: &order}
+		})
+
+		type appService struct {
+			testClosable
+		}
+		mustRegister(t, c, func(db *testClosable) *appService {
+			return &appService{testClosable{Name: "service", Order: &order}}
+		})
+		mustBuild(t, c)
+
+		err := c.Shutdown(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+
+		if len(order) != 2 {
+			t.Fatalf("expected 2 closers, got %d", len(order))
+		}
+		if order[0] != "service" || order[1] != "database" {
+			t.Fatalf("expected [service database], got %v", order)
+		}
+	})
+
+	t.Run("skips non-closer singletons", func(t *testing.T) {
+		c := New()
+		mustRegister(t, c, newTestLogger)
+		mustRegister(t, c, newTestConfig)
+		mustBuild(t, c)
+
+		err := c.Shutdown(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+	})
+
+	t.Run("collects close errors", func(t *testing.T) {
+		c := New()
+		mustRegister(t, c, func() *testFailCloser {
+			return &testFailCloser{}
+		})
+		mustBuild(t, c)
+
+		err := c.Shutdown(context.Background())
+		if err == nil {
+			t.Fatal("expected error from closer")
+		}
+		if !strings.Contains(err.Error(), "close failed") {
+			t.Fatalf("expected 'close failed' in error, got: %v", err)
+		}
+	})
+
+	t.Run("respects context cancellation", func(t *testing.T) {
+		c := New()
+		var order []string
+		mustRegister(t, c, func() *testClosable {
+			return &testClosable{Name: "a", Order: &order}
+		})
+
+		type testClosableB struct {
+			testClosable
+		}
+		mustRegister(t, c, func(a *testClosable) *testClosableB {
+			return &testClosableB{testClosable{Name: "b", Order: &order}}
+		})
+		mustBuild(t, c)
+
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel() // cancel immediately
+
+		err := c.Shutdown(ctx)
+		if err == nil {
+			t.Fatal("expected context error")
+		}
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled, got: %v", err)
+		}
+	})
+
+	t.Run("second call returns ErrAlreadyShutdown", func(t *testing.T) {
+		c := New()
+		mustRegister(t, c, newTestLogger)
+		mustBuild(t, c)
+
+		_ = c.Shutdown(context.Background())
+		err := c.Shutdown(context.Background())
+		if !errors.Is(err, ErrAlreadyShutdown) {
+			t.Fatalf("expected ErrAlreadyShutdown, got: %v", err)
+		}
+	})
+
+	t.Run("before build returns ErrNotBuilt", func(t *testing.T) {
+		c := New()
+		err := c.Shutdown(context.Background())
+		if !errors.Is(err, ErrNotBuilt) {
+			t.Fatalf("expected ErrNotBuilt, got: %v", err)
+		}
+	})
+
+	t.Run("transient io.Closer is not tracked", func(t *testing.T) {
+		c := New()
+		mustRegister(t, c, func() *testClosable {
+			return &testClosable{Name: "transient"}
+		}, WithLifetime(Transient))
+		mustBuild(t, c)
+
+		err := c.Shutdown(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
 		}
 	})
 }

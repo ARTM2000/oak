@@ -15,6 +15,7 @@ build once, resolve anywhere — with full type safety via generics.
 - **Singleton & Transient lifetimes** — one shared instance or a fresh one every time
 - **Named providers** — multiple implementations of the same type
 - **Circular dependency detection** — caught at build time with full chain in the error
+- **Graceful shutdown** — auto-closes `io.Closer` singletons in reverse dependency order
 - **Concurrency safe** — thread-safe resolution after build
 - **Zero dependencies** — only the Go standard library
 
@@ -109,6 +110,48 @@ dependencies are resolved from the typed provider pool.
 2. **Instantiates** all singleton providers eagerly.
 3. **Locks** the container — no further registrations are accepted.
 
+### Graceful Shutdown
+
+Singleton providers that implement [`io.Closer`](https://pkg.go.dev/io#Closer)
+are automatically tracked during `Build()`. Call `Shutdown(ctx)` to close them
+in **reverse dependency order** — dependents are closed before their
+dependencies:
+
+```go
+// Database implements io.Closer
+func (db *Database) Close() error {
+    return db.pool.Close()
+}
+
+// After you're done:
+ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+defer cancel()
+if err := c.Shutdown(ctx); err != nil {
+    log.Println("shutdown error:", err)
+}
+```
+
+Key behaviours:
+- Only **singleton** providers are tracked — transient instances are the
+  caller's responsibility.
+- If a `Close()` call returns an error, shutdown continues and all errors are
+  joined in the result.
+- If the context expires, remaining closers are skipped and the context error
+  is included.
+- Calling `Shutdown` twice returns `ErrAlreadyShutdown`.
+
+**Tip:** Any type can opt into automatic cleanup by implementing `io.Closer`.
+If your type doesn't naturally have a `Close` method, add one:
+
+```go
+type Cache struct { /* ... */ }
+
+func (c *Cache) Close() error {
+    c.Flush()
+    return nil
+}
+```
+
 ### Constructor Signatures
 
 Constructors must be functions with one of these return signatures:
@@ -133,6 +176,7 @@ If a constructor returns `(T, error)` and the error is non-nil, `Build()`
 | `oak.ResolveNamed[T](c, name) (T, error)` | Resolve a named provider (generic, recommended)|
 | `c.Resolve(reflect.Type) (reflect.Value, error)` | Resolve by `reflect.Type`               |
 | `c.ResolveNamed(name, reflect.Type) (reflect.Value, error)` | Resolve named by `reflect.Type` |
+| `c.Shutdown(ctx) error`                          | Close all `io.Closer` singletons         |
 
 ### Options
 
@@ -151,6 +195,7 @@ All errors can be checked with `errors.Is`:
 | `oak.ErrProviderNotFound`   | No provider for the requested type or name       |
 | `oak.ErrCircularDependency` | Dependency graph contains a cycle                |
 | `oak.ErrDuplicateProvider`  | Same type or name registered twice               |
+| `oak.ErrAlreadyShutdown`   | `Shutdown` called more than once                  |
 
 ## Examples
 

@@ -1,13 +1,15 @@
 // Command userapp demonstrates how to wire a small layered application with
-// oak. Run it with:
+// oak, including graceful shutdown. Run it with:
 //
 //	cd _examples/userapp && go run .
 package main
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"os"
+	"time"
 
 	"github.com/ARTM2000/oak"
 )
@@ -29,6 +31,8 @@ func (l *Logger) Info(msg string) {
 	fmt.Printf("[%s] %s\n", l.Level, msg)
 }
 
+// Database implements io.Closer — oak will call Close() on shutdown
+// automatically, in the correct order.
 type Database struct {
 	URL    string
 	Logger *Logger
@@ -37,6 +41,11 @@ type Database struct {
 func (db *Database) Query(q string) string {
 	db.Logger.Info("query: " + q)
 	return "row-result"
+}
+
+func (db *Database) Close() error {
+	db.Logger.Info("database connection closed")
+	return nil
 }
 
 type UserRepository struct {
@@ -116,4 +125,12 @@ func main() {
 
 	result := svc.GetUser(42)
 	fmt.Println("result:", result)
+
+	// Graceful shutdown: closes Database (and any other io.Closer
+	// singletons) in reverse dependency order.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := c.Shutdown(ctx); err != nil {
+		log.Fatal("shutdown error:", err)
+	}
 }

@@ -1,6 +1,7 @@
 package oak_test
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/ARTM2000/oak"
@@ -100,4 +101,32 @@ func ExampleResolveNamed() {
 	// Output:
 	// hello
 	// hola
+}
+
+// connPool implements io.Closer, so oak.Shutdown will call Close automatically.
+type connPool struct {
+	DSN    string
+	closed bool
+}
+
+func (p *connPool) Close() error {
+	p.closed = true
+	return nil
+}
+
+func ExampleContainer_Shutdown() {
+	c := oak.New()
+	_ = c.Register(func() *connPool {
+		return &connPool{DSN: "postgres://localhost"}
+	})
+	_ = c.Build()
+
+	pool, _ := oak.Resolve[*connPool](c)
+	fmt.Println("before:", pool.closed)
+
+	_ = c.Shutdown(context.Background())
+	fmt.Println("after:", pool.closed)
+	// Output:
+	// before: false
+	// after: true
 }

@@ -33,4 +33,16 @@
 //	c.RegisterNamed("postgres", NewPostgresDB)
 //
 //	db, _ := oak.ResolveNamed[Database](c, "postgres")
+//
+// # Graceful Shutdown
+//
+// Singleton providers that implement [io.Closer] are automatically tracked
+// during [Container.Build]. Call [Container.Shutdown] to close them in reverse
+// dependency order:
+//
+//	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+//	defer cancel()
+//	if err := c.Shutdown(ctx); err != nil {
+//	    log.Println("shutdown error:", err)
+//	}
 package oak

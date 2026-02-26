@@ -1,8 +1,10 @@
 package oak
 
 import (
+	"context"
 	"errors"
 	"fmt"
+	"io"
 	"reflect"
 	"strings"
 	"sync"
@@ -37,6 +39,17 @@ type Container interface {
 	// type t must be assignable from the provider's return type. Prefer the
 	// generic [ResolveNamed] helper over calling this method directly.
 	ResolveNamed(name string, t reflect.Type) (reflect.Value, error)
+
+	// Shutdown gracefully closes all singleton providers that implement
+	// [io.Closer], in reverse dependency order (dependents are closed before
+	// their dependencies). The context controls the overall deadline; if it
+	// expires, remaining closers are skipped and the context error is
+	// included in the result.
+	//
+	// Shutdown is safe to call multiple times; subsequent calls return
+	// [ErrAlreadyShutdown]. It is the caller's responsibility to stop
+	// calling [Container.Resolve] before or during shutdown.
+	Shutdown(ctx context.Context) error
 }
 
 type container struct {
@@ -46,7 +59,12 @@ type container struct {
 	named      map[string]provider
 	singletons map[reflect.Type]reflect.Value
 
-	built bool
+	// closers holds singletons that implement io.Closer, recorded in
+	// dependency order during Build. Shutdown iterates them in reverse.
+	closers []io.Closer
+
+	built    bool
+	shutdown bool
 }
 
 // New creates an empty [Container] ready for registration.
@@ -192,6 +210,10 @@ func (c *container) buildResolve(t reflect.Type, states map[reflect.Type]buildSt
 			return fmt.Errorf("constructing %s: %w", t, err)
 		}
 		c.singletons[t] = instance
+
+		if closer, ok := instance.Interface().(io.Closer); ok {
+			c.closers = append(c.closers, closer)
+		}
 	}
 
 	states[t] = visited
@@ -217,4 +239,36 @@ func (c *container) circularError(t reflect.Type, stack []reflect.Type) error {
 	chain[len(stack)] = t.String()
 
 	return fmt.Errorf("%w: %s", ErrCircularDependency, strings.Join(chain, " -> "))
+}
+
+// ---------------------------------------------------------------------------
+// Shutdown
+// ---------------------------------------------------------------------------
+
+func (c *container) Shutdown(ctx context.Context) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if !c.built {
+		return ErrNotBuilt
+	}
+
+	if c.shutdown {
+		return ErrAlreadyShutdown
+	}
+
+	c.shutdown = true
+
+	var errs []error
+	for i := len(c.closers) - 1; i >= 0; i-- {
+		if err := ctx.Err(); err != nil {
+			errs = append(errs, err)
+			break
+		}
+		if err := c.closers[i].Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
+
+	return errors.Join(errs...)
 }
