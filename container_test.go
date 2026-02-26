@@ -56,8 +56,8 @@ func TestRegister(t *testing.T) {
 
 	t.Run("after build returns ErrAlreadyBuilt", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustBuild(t, c)
 
 		err := c.Register(newTestConfig)
 		if !errors.Is(err, ErrAlreadyBuilt) {
@@ -67,7 +67,7 @@ func TestRegister(t *testing.T) {
 
 	t.Run("duplicate type returns ErrDuplicateProvider", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
+		mustRegister(t, c, newTestLogger)
 
 		err := c.Register(func() *testLogger { return &testLogger{} })
 		if !errors.Is(err, ErrDuplicateProvider) {
@@ -104,7 +104,7 @@ func TestRegisterNamed(t *testing.T) {
 
 	t.Run("duplicate name returns ErrDuplicateProvider", func(t *testing.T) {
 		c := New()
-		c.RegisterNamed("log", newTestLogger)
+		mustRegisterNamed(t, c, "log", newTestLogger)
 
 		err := c.RegisterNamed("log", func() *testLogger { return &testLogger{} })
 		if !errors.Is(err, ErrDuplicateProvider) {
@@ -114,8 +114,8 @@ func TestRegisterNamed(t *testing.T) {
 
 	t.Run("after build returns ErrAlreadyBuilt", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustBuild(t, c)
 
 		err := c.RegisterNamed("log", newTestLogger)
 		if !errors.Is(err, ErrAlreadyBuilt) {
@@ -125,7 +125,7 @@ func TestRegisterNamed(t *testing.T) {
 
 	t.Run("same type can be named and typed", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
+		mustRegister(t, c, newTestLogger)
 		err := c.RegisterNamed("special", func() *testLogger { return &testLogger{Prefix: "special"} })
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -147,7 +147,7 @@ func TestBuild(t *testing.T) {
 
 	t.Run("single provider", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
+		mustRegister(t, c, newTestLogger)
 		if err := c.Build(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
@@ -155,11 +155,11 @@ func TestBuild(t *testing.T) {
 
 	t.Run("dependency chain", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Register(newTestConfig)
-		c.Register(newTestDatabase)
-		c.Register(newTestUserRepo)
-		c.Register(newTestUserService)
+		mustRegister(t, c, newTestLogger)
+		mustRegister(t, c, newTestConfig)
+		mustRegister(t, c, newTestDatabase)
+		mustRegister(t, c, newTestUserRepo)
+		mustRegister(t, c, newTestUserService)
 
 		if err := c.Build(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -168,8 +168,8 @@ func TestBuild(t *testing.T) {
 
 	t.Run("called twice returns ErrAlreadyBuilt", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustBuild(t, c)
 
 		if err := c.Build(); !errors.Is(err, ErrAlreadyBuilt) {
 			t.Fatalf("expected ErrAlreadyBuilt, got: %v", err)
@@ -178,7 +178,7 @@ func TestBuild(t *testing.T) {
 
 	t.Run("missing dependency returns ErrProviderNotFound", func(t *testing.T) {
 		c := New()
-		c.Register(newTestDatabase) // needs *testConfig and *testLogger
+		mustRegister(t, c, newTestDatabase) // needs *testConfig and *testLogger
 
 		err := c.Build()
 		if !errors.Is(err, ErrProviderNotFound) {
@@ -188,9 +188,9 @@ func TestBuild(t *testing.T) {
 
 	t.Run("circular dependency detected", func(t *testing.T) {
 		c := New()
-		c.Register(newTestCircA)
-		c.Register(newTestCircB)
-		c.Register(newTestCircC)
+		mustRegister(t, c, newTestCircA)
+		mustRegister(t, c, newTestCircB)
+		mustRegister(t, c, newTestCircC)
 
 		err := c.Build()
 		if !errors.Is(err, ErrCircularDependency) {
@@ -200,9 +200,9 @@ func TestBuild(t *testing.T) {
 
 	t.Run("circular error includes chain", func(t *testing.T) {
 		c := New()
-		c.Register(newTestCircA)
-		c.Register(newTestCircB)
-		c.Register(newTestCircC)
+		mustRegister(t, c, newTestCircA)
+		mustRegister(t, c, newTestCircB)
+		mustRegister(t, c, newTestCircC)
 
 		err := c.Build()
 		if !strings.Contains(err.Error(), "->") {
@@ -212,7 +212,7 @@ func TestBuild(t *testing.T) {
 
 	t.Run("constructor error propagates", func(t *testing.T) {
 		c := New()
-		c.Register(func() (*testConfig, error) {
+		mustRegister(t, c, func() (*testConfig, error) {
 			return nil, errors.New("connection failed")
 		})
 
@@ -227,7 +227,7 @@ func TestBuild(t *testing.T) {
 
 	t.Run("validates named provider dependencies", func(t *testing.T) {
 		c := New()
-		c.RegisterNamed("order", newTestOrderService) // depends on *testLogger, not registered
+		mustRegisterNamed(t, c, "order", newTestOrderService)
 
 		err := c.Build()
 		if !errors.Is(err, ErrProviderNotFound) {
@@ -237,8 +237,8 @@ func TestBuild(t *testing.T) {
 
 	t.Run("named provider with satisfied deps builds", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.RegisterNamed("order", newTestOrderService)
+		mustRegister(t, c, newTestLogger)
+		mustRegisterNamed(t, c, "order", newTestOrderService)
 
 		if err := c.Build(); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -248,11 +248,11 @@ func TestBuild(t *testing.T) {
 	t.Run("transient provider validated but not instantiated", func(t *testing.T) {
 		callCount := 0
 		c := New()
-		c.Register(func() *testLogger {
+		mustRegister(t, c, func() *testLogger {
 			callCount++
 			return &testLogger{Prefix: "app"}
 		}, WithLifetime(Transient))
-		c.Build()
+		mustBuild(t, c)
 
 		if callCount != 0 {
 			t.Fatalf("transient should not be constructed during build, called %d times", callCount)
@@ -262,11 +262,11 @@ func TestBuild(t *testing.T) {
 	t.Run("singleton is eagerly instantiated", func(t *testing.T) {
 		callCount := 0
 		c := New()
-		c.Register(func() *testLogger {
+		mustRegister(t, c, func() *testLogger {
 			callCount++
 			return &testLogger{Prefix: "app"}
 		})
-		c.Build()
+		mustBuild(t, c)
 
 		if callCount != 1 {
 			t.Fatalf("singleton should be constructed once during build, called %d times", callCount)

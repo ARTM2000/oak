@@ -16,7 +16,7 @@ import (
 func TestResolve(t *testing.T) {
 	t.Run("before build returns ErrNotBuilt", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
+		mustRegister(t, c, newTestLogger)
 
 		_, err := c.Resolve(reflect.TypeOf((*testLogger)(nil)))
 		if !errors.Is(err, ErrNotBuilt) {
@@ -26,8 +26,8 @@ func TestResolve(t *testing.T) {
 
 	t.Run("singleton returns same instance", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustBuild(t, c)
 
 		v1, err := c.Resolve(reflect.TypeOf((*testLogger)(nil)))
 		if err != nil {
@@ -42,8 +42,8 @@ func TestResolve(t *testing.T) {
 
 	t.Run("transient returns different instances", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger, WithLifetime(Transient))
-		c.Build()
+		mustRegister(t, c, newTestLogger, WithLifetime(Transient))
+		mustBuild(t, c)
 
 		v1, err := c.Resolve(reflect.TypeOf((*testLogger)(nil)))
 		if err != nil {
@@ -59,16 +59,16 @@ func TestResolve(t *testing.T) {
 	t.Run("transient constructor called each time", func(t *testing.T) {
 		callCount := 0
 		c := New()
-		c.Register(func() *testLogger {
+		mustRegister(t, c, func() *testLogger {
 			callCount++
 			return &testLogger{}
 		}, WithLifetime(Transient))
-		c.Build()
+		mustBuild(t, c)
 
 		callCount = 0
-		c.Resolve(reflect.TypeOf((*testLogger)(nil)))
-		c.Resolve(reflect.TypeOf((*testLogger)(nil)))
-		c.Resolve(reflect.TypeOf((*testLogger)(nil)))
+		_, _ = c.Resolve(reflect.TypeOf((*testLogger)(nil)))
+		_, _ = c.Resolve(reflect.TypeOf((*testLogger)(nil)))
+		_, _ = c.Resolve(reflect.TypeOf((*testLogger)(nil)))
 
 		if callCount != 3 {
 			t.Fatalf("expected 3 calls, got %d", callCount)
@@ -77,12 +77,12 @@ func TestResolve(t *testing.T) {
 
 	t.Run("deep dependency chain fully resolved", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Register(newTestConfig)
-		c.Register(newTestDatabase)
-		c.Register(newTestUserRepo)
-		c.Register(newTestUserService)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustRegister(t, c, newTestConfig)
+		mustRegister(t, c, newTestDatabase)
+		mustRegister(t, c, newTestUserRepo)
+		mustRegister(t, c, newTestUserService)
+		mustBuild(t, c)
 
 		svc, err := Resolve[*testUserService](c)
 		if err != nil {
@@ -107,12 +107,12 @@ func TestResolve(t *testing.T) {
 
 	t.Run("singletons share instances across dependents", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Register(newTestConfig)
-		c.Register(newTestDatabase)
-		c.Register(newTestUserRepo)
-		c.Register(newTestUserService)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustRegister(t, c, newTestConfig)
+		mustRegister(t, c, newTestDatabase)
+		mustRegister(t, c, newTestUserRepo)
+		mustRegister(t, c, newTestUserService)
+		mustBuild(t, c)
 
 		svc, _ := Resolve[*testUserService](c)
 		repo, _ := Resolve[*testUserRepo](c)
@@ -131,9 +131,9 @@ func TestResolve(t *testing.T) {
 
 	t.Run("transient with singleton dependency shares singleton", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Register(newTestOrderService, WithLifetime(Transient))
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustRegister(t, c, newTestOrderService, WithLifetime(Transient))
+		mustBuild(t, c)
 
 		s1, _ := Resolve[*testOrderService](c)
 		s2, _ := Resolve[*testOrderService](c)
@@ -149,12 +149,12 @@ func TestResolve(t *testing.T) {
 	t.Run("singleton depending on transient captures one instance", func(t *testing.T) {
 		callCount := 0
 		c := New()
-		c.Register(func() *testLogger {
+		mustRegister(t, c, func() *testLogger {
 			callCount++
 			return &testLogger{Prefix: fmt.Sprintf("v%d", callCount)}
 		}, WithLifetime(Transient))
-		c.Register(newTestOrderService)
-		c.Build()
+		mustRegister(t, c, newTestOrderService)
+		mustBuild(t, c)
 
 		s1, _ := Resolve[*testOrderService](c)
 		s2, _ := Resolve[*testOrderService](c)
@@ -169,8 +169,8 @@ func TestResolve(t *testing.T) {
 
 	t.Run("unregistered type returns ErrProviderNotFound", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustBuild(t, c)
 
 		_, err := c.Resolve(reflect.TypeOf((*testConfig)(nil)))
 		if !errors.Is(err, ErrProviderNotFound) {
@@ -185,8 +185,8 @@ func TestResolve(t *testing.T) {
 
 func TestResolveGeneric(t *testing.T) {
 	c := New()
-	c.Register(newTestLogger)
-	c.Build()
+	mustRegister(t, c, newTestLogger)
+	mustBuild(t, c)
 
 	logger, err := Resolve[*testLogger](c)
 	if err != nil {
@@ -203,10 +203,10 @@ func TestResolveGeneric(t *testing.T) {
 
 func TestResolve_Interface(t *testing.T) {
 	c := New()
-	c.Register(func() testService {
+	mustRegister(t, c, func() testService {
 		return &testUserService{Logger: &testLogger{Prefix: "iface"}}
 	})
-	c.Build()
+	mustBuild(t, c)
 
 	svc, err := Resolve[testService](c)
 	if err != nil {
@@ -224,7 +224,7 @@ func TestResolve_Interface(t *testing.T) {
 func TestResolveNamed(t *testing.T) {
 	t.Run("before build returns ErrNotBuilt", func(t *testing.T) {
 		c := New()
-		c.RegisterNamed("log", newTestLogger)
+		mustRegisterNamed(t, c, "log", newTestLogger)
 
 		_, err := c.ResolveNamed("log", reflect.TypeOf((*testLogger)(nil)))
 		if !errors.Is(err, ErrNotBuilt) {
@@ -234,8 +234,8 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("resolves no-dep named provider", func(t *testing.T) {
 		c := New()
-		c.RegisterNamed("log", newTestLogger)
-		c.Build()
+		mustRegisterNamed(t, c, "log", newTestLogger)
+		mustBuild(t, c)
 
 		val, err := c.ResolveNamed("log", reflect.TypeOf((*testLogger)(nil)))
 		if err != nil {
@@ -249,7 +249,7 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("unknown name returns ErrProviderNotFound", func(t *testing.T) {
 		c := New()
-		c.Build()
+		mustBuild(t, c)
 
 		_, err := c.ResolveNamed("missing", reflect.TypeOf((*testLogger)(nil)))
 		if !errors.Is(err, ErrProviderNotFound) {
@@ -259,9 +259,9 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("named provider with dependencies", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.RegisterNamed("order", newTestOrderService)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustRegisterNamed(t, c, "order", newTestOrderService)
+		mustBuild(t, c)
 
 		svc, err := ResolveNamed[*testOrderService](c, "order")
 		if err != nil {
@@ -274,10 +274,10 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("named constructor error is propagated", func(t *testing.T) {
 		c := New()
-		c.RegisterNamed("bad", func() (*testConfig, error) {
+		mustRegisterNamed(t, c, "bad", func() (*testConfig, error) {
 			return nil, errors.New("init failed")
 		})
-		c.Build()
+		mustBuild(t, c)
 
 		_, err := ResolveNamed[*testConfig](c, "bad")
 		if err == nil {
@@ -290,8 +290,8 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("type mismatch returns error", func(t *testing.T) {
 		c := New()
-		c.RegisterNamed("log", newTestLogger)
-		c.Build()
+		mustRegisterNamed(t, c, "log", newTestLogger)
+		mustBuild(t, c)
 
 		_, err := c.ResolveNamed("log", reflect.TypeOf((*testConfig)(nil)))
 		if err == nil {
@@ -301,14 +301,14 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("multiple implementations via named providers", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.RegisterNamed("user-svc", func(l *testLogger) testService {
+		mustRegister(t, c, newTestLogger)
+		mustRegisterNamed(t, c, "user-svc", func(l *testLogger) testService {
 			return &testUserService{Logger: l}
 		})
-		c.RegisterNamed("order-svc", func(l *testLogger) testService {
+		mustRegisterNamed(t, c, "order-svc", func(l *testLogger) testService {
 			return &testOrderService{Logger: l}
 		})
-		c.Build()
+		mustBuild(t, c)
 
 		userSvc, err := ResolveNamed[testService](c, "user-svc")
 		if err != nil {
@@ -329,8 +329,8 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("named provider creates new instance each call", func(t *testing.T) {
 		c := New()
-		c.RegisterNamed("log", newTestLogger)
-		c.Build()
+		mustRegisterNamed(t, c, "log", newTestLogger)
+		mustBuild(t, c)
 
 		v1, _ := c.ResolveNamed("log", reflect.TypeOf((*testLogger)(nil)))
 		v2, _ := c.ResolveNamed("log", reflect.TypeOf((*testLogger)(nil)))
@@ -342,10 +342,10 @@ func TestResolveNamed(t *testing.T) {
 
 	t.Run("named provider shares singleton deps", func(t *testing.T) {
 		c := New()
-		c.Register(newTestLogger)
-		c.RegisterNamed("o1", newTestOrderService)
-		c.RegisterNamed("o2", newTestOrderService)
-		c.Build()
+		mustRegister(t, c, newTestLogger)
+		mustRegisterNamed(t, c, "o1", newTestOrderService)
+		mustRegisterNamed(t, c, "o2", newTestOrderService)
+		mustBuild(t, c)
 
 		o1, _ := ResolveNamed[*testOrderService](c, "o1")
 		o2, _ := ResolveNamed[*testOrderService](c, "o2")
@@ -358,8 +358,8 @@ func TestResolveNamed(t *testing.T) {
 
 func TestResolveNamedGeneric(t *testing.T) {
 	c := New()
-	c.RegisterNamed("log", func() *testLogger { return &testLogger{Prefix: "named"} })
-	c.Build()
+	mustRegisterNamed(t, c, "log", func() *testLogger { return &testLogger{Prefix: "named"} })
+	mustBuild(t, c)
 
 	logger, err := ResolveNamed[*testLogger](c, "log")
 	if err != nil {
@@ -376,11 +376,11 @@ func TestResolveNamedGeneric(t *testing.T) {
 
 func TestResolve_Concurrent(t *testing.T) {
 	c := New()
-	c.Register(newTestLogger)
-	c.Register(newTestConfig)
-	c.Register(newTestDatabase)
-	c.Register(newTestOrderService, WithLifetime(Transient))
-	c.Build()
+	mustRegister(t, c, newTestLogger)
+	mustRegister(t, c, newTestConfig)
+	mustRegister(t, c, newTestDatabase)
+	mustRegister(t, c, newTestOrderService, WithLifetime(Transient))
+	mustBuild(t, c)
 
 	const goroutines = 100
 	var wg sync.WaitGroup
@@ -422,9 +422,9 @@ func TestResolve_Concurrent(t *testing.T) {
 
 func TestResolveNamed_Concurrent(t *testing.T) {
 	c := New()
-	c.Register(newTestLogger)
-	c.RegisterNamed("order", newTestOrderService)
-	c.Build()
+	mustRegister(t, c, newTestLogger)
+	mustRegisterNamed(t, c, "order", newTestOrderService)
+	mustBuild(t, c)
 
 	const goroutines = 100
 	var wg sync.WaitGroup
@@ -460,9 +460,9 @@ func TestResolveNamed_Concurrent(t *testing.T) {
 
 func TestResolve_TransientDependsOnTransient(t *testing.T) {
 	c := New()
-	c.Register(newTestLogger, WithLifetime(Transient))
-	c.Register(newTestOrderService, WithLifetime(Transient))
-	c.Build()
+	mustRegister(t, c, newTestLogger, WithLifetime(Transient))
+	mustRegister(t, c, newTestOrderService, WithLifetime(Transient))
+	mustBuild(t, c)
 
 	s1, err := Resolve[*testOrderService](c)
 	if err != nil {
@@ -480,11 +480,11 @@ func TestResolve_TransientDependsOnTransient(t *testing.T) {
 
 func TestResolve_TransientConstructorReturningError(t *testing.T) {
 	c := New()
-	c.Register(func() *testLogger { return &testLogger{} }, WithLifetime(Transient))
-	c.Register(func(l *testLogger) (*testOrderService, error) {
+	mustRegister(t, c, func() *testLogger { return &testLogger{} }, WithLifetime(Transient))
+	mustRegister(t, c, func(l *testLogger) (*testOrderService, error) {
 		return nil, errors.New("service init failed")
 	}, WithLifetime(Transient))
-	c.Build()
+	mustBuild(t, c)
 
 	_, err := Resolve[*testOrderService](c)
 	if err == nil {
@@ -497,8 +497,8 @@ func TestResolve_TransientConstructorReturningError(t *testing.T) {
 
 func TestResolve_ZeroArgConstructor(t *testing.T) {
 	c := New()
-	c.Register(func() int { return 42 })
-	c.Build()
+	mustRegister(t, c, func() int { return 42 })
+	mustBuild(t, c)
 
 	val, err := Resolve[int](c)
 	if err != nil {
@@ -516,10 +516,10 @@ func TestResolve_ValueType(t *testing.T) {
 	}
 
 	c := New()
-	c.Register(func() settings {
+	mustRegister(t, c, func() settings {
 		return settings{Debug: true, Port: 8080}
 	})
-	c.Build()
+	mustBuild(t, c)
 
 	s, err := Resolve[settings](c)
 	if err != nil {

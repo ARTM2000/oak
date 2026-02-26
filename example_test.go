@@ -28,7 +28,7 @@ func (g *spanishGreeter) Greet() string { return "hola" }
 func ExampleNew() {
 	c := oak.New()
 
-	c.Register(func() *Logger { return &Logger{Prefix: "app"} })
+	_ = c.Register(func() *Logger { return &Logger{Prefix: "app"} })
 	if err := c.Build(); err != nil {
 		panic(err)
 	}
@@ -40,11 +40,11 @@ func ExampleNew() {
 
 func ExampleWithLifetime() {
 	c := oak.New()
-	c.Register(
+	_ = c.Register(
 		func() *Logger { return &Logger{Prefix: "app"} },
 		oak.WithLifetime(oak.Transient),
 	)
-	c.Build()
+	_ = c.Build()
 
 	l1, _ := oak.Resolve[*Logger](c)
 	l2, _ := oak.Resolve[*Logger](c)
@@ -54,12 +54,12 @@ func ExampleWithLifetime() {
 
 func ExampleResolve() {
 	c := oak.New()
-	c.Register(func() *Config { return &Config{DSN: "postgres://localhost"} })
-	c.Register(func() *Logger { return &Logger{Prefix: "app"} })
-	c.Register(func(cfg *Config, log *Logger) *Database {
+	_ = c.Register(func() *Config { return &Config{DSN: "postgres://localhost"} })
+	_ = c.Register(func() *Logger { return &Logger{Prefix: "app"} })
+	_ = c.Register(func(cfg *Config, log *Logger) *Database {
 		return &Database{Config: cfg, Logger: log}
 	})
-	c.Build()
+	_ = c.Build()
 
 	db, err := oak.Resolve[*Database](c)
 	if err != nil {
@@ -74,9 +74,9 @@ func ExampleResolve() {
 
 func ExampleContainer_RegisterNamed() {
 	c := oak.New()
-	c.RegisterNamed("dev", func() *Config { return &Config{DSN: "localhost"} })
-	c.RegisterNamed("prod", func() *Config { return &Config{DSN: "prod-host"} })
-	c.Build()
+	_ = c.RegisterNamed("dev", func() *Config { return &Config{DSN: "localhost"} })
+	_ = c.RegisterNamed("prod", func() *Config { return &Config{DSN: "prod-host"} })
+	_ = c.Build()
 
 	dev, _ := oak.ResolveNamed[*Config](c, "dev")
 	prod, _ := oak.ResolveNamed[*Config](c, "prod")
@@ -89,9 +89,9 @@ func ExampleContainer_RegisterNamed() {
 
 func ExampleResolveNamed() {
 	c := oak.New()
-	c.RegisterNamed("en", func() Greeter { return &englishGreeter{} })
-	c.RegisterNamed("es", func() Greeter { return &spanishGreeter{} })
-	c.Build()
+	_ = c.RegisterNamed("en", func() Greeter { return &englishGreeter{} })
+	_ = c.RegisterNamed("es", func() Greeter { return &spanishGreeter{} })
+	_ = c.Build()
 
 	en, _ := oak.ResolveNamed[Greeter](c, "en")
 	es, _ := oak.ResolveNamed[Greeter](c, "es")
