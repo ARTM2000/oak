@@ -122,7 +122,7 @@ func (c *container) construct(p provider) (reflect.Value, error) {
 
 		inst, err := c.construct(depProvider)
 		if err != nil {
-			return reflect.Value{}, err
+			return reflect.Value{}, fmt.Errorf("resolving %s: %w", depType, err)
 		}
 		args[i] = inst
 	}

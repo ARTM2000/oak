@@ -495,6 +495,59 @@ func TestResolve_TransientConstructorReturningError(t *testing.T) {
 	}
 }
 
+func TestResolve_ErrorChainShowsResolutionPath(t *testing.T) {
+	t.Run("transient chain includes resolution path", func(t *testing.T) {
+		c := New()
+		mustRegister(t, c, func() (*testConfig, error) {
+			return nil, errors.New("connection refused")
+		}, WithLifetime(Transient))
+		mustRegister(t, c, func(cfg *testConfig) *testDatabase {
+			return &testDatabase{Config: cfg}
+		}, WithLifetime(Transient))
+		mustRegister(t, c, func(db *testDatabase) *testUserRepo {
+			return &testUserRepo{DB: db}
+		}, WithLifetime(Transient))
+		mustBuild(t, c)
+
+		_, err := Resolve[*testUserRepo](c)
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+		msg := err.Error()
+		if !strings.Contains(msg, "resolving *oak.testDatabase") {
+			t.Errorf("expected chain to mention *oak.testDatabase, got: %s", msg)
+		}
+		if !strings.Contains(msg, "resolving *oak.testConfig") {
+			t.Errorf("expected chain to mention *oak.testConfig, got: %s", msg)
+		}
+		if !strings.Contains(msg, "connection refused") {
+			t.Errorf("expected root cause 'connection refused', got: %s", msg)
+		}
+	})
+
+	t.Run("singleton with failing transient dep shows chain", func(t *testing.T) {
+		c := New()
+		mustRegister(t, c, func() (*testLogger, error) {
+			return nil, errors.New("logger init failed")
+		}, WithLifetime(Transient))
+		mustRegister(t, c, newTestOrderService) // singleton depends on transient *testLogger
+
+		err := c.Build()
+		if err == nil {
+			t.Fatal("expected error")
+		}
+
+		msg := err.Error()
+		if !strings.Contains(msg, "resolving *oak.testLogger") {
+			t.Errorf("expected chain to mention *oak.testLogger, got: %s", msg)
+		}
+		if !strings.Contains(msg, "logger init failed") {
+			t.Errorf("expected root cause 'logger init failed', got: %s", msg)
+		}
+	})
+}
+
 func TestResolve_ZeroArgConstructor(t *testing.T) {
 	c := New()
 	mustRegister(t, c, func() int { return 42 })
